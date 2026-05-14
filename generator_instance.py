@@ -16,9 +16,9 @@ np.random.seed(SEED)
 random.seed(SEED)
 
 # ── Konfigurasi ───────────────────────────────────────────────────────────────
-TOTAL      = 10_000
-N_NORMAL   = int(TOTAL * 0.60)            # 6000
-N_ATTACK   = int(TOTAL * 0.25)            # 2500
+TOTAL      = 30_000
+N_NORMAL   = int(TOTAL * 0.40)            # 6000
+N_ATTACK   = int(TOTAL * 0.40)            # 2500
 N_FAULT    = TOTAL - N_NORMAL - N_ATTACK  # 1500
 
 DEVICE_IDS = [f"SGD-{i:04d}" for i in range(1, 51)]   # 50 perangkat
