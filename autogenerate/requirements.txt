@@ -1,0 +1,4 @@
+flask>=3.0
+flask-cors>=4.0
+numpy>=1.24
+pyngrok>=7.0
