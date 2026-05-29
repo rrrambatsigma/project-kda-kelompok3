@@ -1,0 +1,12 @@
+MANUAL HARD VOTING ENSEMBLE CLASSIFICATION REPORT
+======================================================================
+
+              precision    recall  f1-score   support
+
+      Normal       0.94      1.00      0.97      1602
+      Attack       0.97      0.96      0.97      2181
+       Fault       0.96      0.90      0.93      1216
+
+    accuracy                           0.96      4999
+   macro avg       0.96      0.95      0.96      4999
+weighted avg       0.96      0.96      0.96      4999

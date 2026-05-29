@@ -1,0 +1,4 @@
+,Predicted Normal,Predicted Attack,Predicted Fault
+Actual Normal,1598,0,4
+Actual Attack,39,2097,45
+Actual Fault,62,54,1100
