@@ -532,7 +532,7 @@ def parse_arguments():
     parser.add_argument(
         "--base-dir",
         type=str,
-        default="..",
+        default=".",
         help="Path root project yang berisi folder data/processed dan outputs."
     )
 
