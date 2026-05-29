@@ -1,0 +1,27 @@
+# Virtual Environment
+.venv/
+venv/
+env/
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment Variables
+.env
+
+# Keys & Secrets
+*.pem
+*.key
+*.crt
+
+# RSA Keys
+private_key.pem
+public_key.pem
+keys/
+
+# Streamlit
+.stream
+.streamlit/
+.streamlit/secrets.toml

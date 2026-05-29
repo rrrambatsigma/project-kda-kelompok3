@@ -23,13 +23,22 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import cross_val_score
 import joblib
 
-# ─────────────────────────────────────────────
-# [VIO] IMPORT ENKRIPSI
-# ─────────────────────────────────────────────
 from encrypt import build_packet, setup_keys
 
-# CONSTANTS
-OUTPUT_DIR = r"D:\SEMESTER 4\KDA\batch 2\project-kda-kelompok3\hasil"
+# ─────────────────────────────────────────────
+# PROJECT PATHS (PORTABLE)
+# ─────────────────────────────────────────────
+BASE_DIR = os.path.dirname(
+    os.path.dirname(
+        os.path.abspath(__file__)
+    )
+)
+
+DATA_DIR = os.path.join(BASE_DIR, "data")
+HASIL_DIR = os.path.join(BASE_DIR, "hasil")
+AUTOGENERATE_DIR = os.path.join(BASE_DIR, "autogenerate")
+
+OUTPUT_DIR = HASIL_DIR
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # 0 = Normal, 1 = Attack, 2 = Fault
@@ -38,11 +47,11 @@ LABEL_NAMES = ["Normal", "Attack", "Fault"]
 N_ITERATIONS = 5
 
 # STREAMING & DRIFT MONITORING CONSTANTS
-STREAM_URL = "http://localhost:8080/data/realtime"
+STREAM_URL = "http://localhost:8001/data/realtime"
 
 # [RAMBAT] Endpoint tujuan kirim encrypted packet ke backend
 # Ganti URL ini sesuai endpoint yang Rambat buat di server.py
-PREDICTION_POST_URL = "http://localhost:8080/prediction/receive"
+PREDICTION_POST_URL = "http://localhost:8001/prediction/receive"
 
 STREAM_BUFFER_SIZE = 500
 TRAINING_BUFFER_SIZE = 200
@@ -50,16 +59,28 @@ DRIFT_LOG_FILE = os.path.join(OUTPUT_DIR, "hasil_prediksi_drift.csv")
 MODEL_DIR = os.path.join(OUTPUT_DIR, "models")
 os.makedirs(MODEL_DIR, exist_ok=True)
 
-GROUND_TRUTH_CSV = r"D:\SEMESTER 4\KDA\batch 2\project-kda-kelompok3\autogenerate\smart_grid_data_v2.csv"
+print(f"[PATH] BASE_DIR  : {BASE_DIR}")
+print(f"[PATH] DATA_DIR  : {DATA_DIR}")
+print(f"[PATH] HASIL_DIR : {HASIL_DIR}")
+print(f"[PATH] MODEL_DIR : {MODEL_DIR}")
 
+GROUND_TRUTH_CSV = os.path.join(
+    AUTOGENERATE_DIR,
+    "smart_grid_data_v2.csv"
+)
 
 # ─────────────────────────────────────────────
 # LOAD DATA
 # ─────────────────────────────────────────────
 def load_data():
     print("\n[1] Load data")
-    train_df = pd.read_csv(r"D:\SEMESTER 4\KDA\project-kda-kelompok3\data\df_train.csv")
-    test_df  = pd.read_csv(r"D:\SEMESTER 4\KDA\project-kda-kelompok3\data\df_test_lengkap.csv")
+    train_df = pd.read_csv(
+        os.path.join(DATA_DIR, "df_train.csv")
+    )
+
+    test_df = pd.read_csv(
+        os.path.join(DATA_DIR, "df_test_lengkap.csv")
+    )
 
     drop_cols = ['timestamp', 'device_id']
 
