@@ -1,17 +1,23 @@
 """
-Smart Grid IoT Security — Real-Time Simulator + SSE Stream  [v2 MULTI-METHOD]
-==============================================================================
+Smart Grid IoT Security — Real-Time Simulator + SSE Stream  [v2 MULTI-METHOD + NGROK]
+======================================================================================
 Upgrade dari v1:
   1. Markov Chain     — transisi label NORMAL→ATTACK→FAULT yang realistis
   2. Temporal / AR(1) — nilai sensor bergantung pada state sebelumnya per device
   3. Pola harian      — beban listrik naik-turun sesuai jam (opsional bonus)
   4. 10 row / detik   — burst generate, di-stream via SSE
+  5. NGROK INTEGRATION — expose ke internet publik secara otomatis
 
 Label: 0=NORMAL, 1=ATTACK, 2=FAULT
 
+Install dependencies:
+  pip install flask flask-cors numpy pyngrok
+
 Jalankan:
-  python auto_generate_v2.py
-  python auto_generate_v2.py --port 8080 --rate 10
+  python auto_generate_v2_ngrok.py
+  python auto_generate_v2_ngrok.py --port 8080 --rate 10
+  python auto_generate_v2_ngrok.py --port 8080 --rate 10 --ngrok-token YOUR_TOKEN
+  python auto_generate_v2_ngrok.py --no-ngrok   (matikan ngrok, lokal saja)
 """
 
 import argparse
@@ -20,6 +26,7 @@ import json
 import os
 import queue
 import random
+import sys
 import threading
 import time
 from collections import deque
@@ -56,6 +63,9 @@ HISTORY    = deque(maxlen=1000)
 TOTAL_ROWS = 0
 LOCK       = threading.Lock()
 SSE_QUEUES: list[queue.Queue] = []
+
+# Simpan public URL ngrok agar bisa ditampilkan di endpoint /status
+NGROK_PUBLIC_URL = None
 
 np.random.seed()
 
@@ -95,15 +105,9 @@ def markov_next_label(device_id: str) -> int:
 # ══════════════════════════════════════════════════════════════════════════════
 # [2] TEMPORAL DEPENDENCY — AR(1) State per Device
 # ══════════════════════════════════════════════════════════════════════════════
-#
-# Setiap device menyimpan nilai sensor terakhir.
-# Nilai baru = α * nilai_lama + (1-α) * target_baru + noise
-# α (smoothing) menentukan seberapa "inert" perubahan sensor.
-#
 
 AR_ALPHA = 0.65   # semakin besar → perubahan makin lambat / smooth
 
-# State temporal per device: simpan nilai sensor terakhir
 DEVICE_SENSOR_STATE: dict[str, dict] = {
     d: {
         "voltage":     float(np.random.uniform(218, 222)),
@@ -118,10 +122,7 @@ DEVICE_SENSOR_STATE: dict[str, dict] = {
 }
 
 def ar_smooth(device_id: str, key: str, target: float) -> float:
-    """
-    AR(1) smoothing:  new = α*prev + (1-α)*target
-    Update state in-place dan kembalikan nilai baru.
-    """
+    """AR(1) smoothing:  new = α*prev + (1-α)*target"""
     prev = DEVICE_SENSOR_STATE[device_id][key]
     new  = AR_ALPHA * prev + (1 - AR_ALPHA) * target
     DEVICE_SENSOR_STATE[device_id][key] = new
@@ -129,7 +130,7 @@ def ar_smooth(device_id: str, key: str, target: float) -> float:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# [3] DEVICE BIAS — Karakteristik unik per device (sama seperti v1)
+# [3] DEVICE BIAS — Karakteristik unik per device
 # ══════════════════════════════════════════════════════════════════════════════
 
 DEVICE_BIAS = {
@@ -152,16 +153,12 @@ def apply_device_bias(device_id, voltage, current, temperature):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# [4] POLA HARIAN (Diurnal Pattern) — Bonus realism
+# [4] POLA HARIAN (Diurnal Pattern)
 # ══════════════════════════════════════════════════════════════════════════════
 
 def diurnal_load_factor(ts: datetime) -> float:
-    """
-    Faktor beban berdasarkan jam (0.0–1.0).
-    Puncak jam 9–11 pagi dan 6–8 malam, rendah dini hari.
-    """
+    """Faktor beban berdasarkan jam (0.0–1.0)."""
     h = ts.hour + ts.minute / 60.0
-    # Dua puncak gaussian
     morning = 0.8 * np.exp(-0.5 * ((h - 10) / 2.0) ** 2)
     evening = 1.0 * np.exp(-0.5 * ((h - 19) / 1.5) ** 2)
     base    = 0.3
@@ -186,16 +183,15 @@ def _power(v, c):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# CORE GENERATOR — Menggabungkan semua metode
+# CORE GENERATOR
 # ══════════════════════════════════════════════════════════════════════════════
 
 def generate_row(ts: datetime | None = None) -> dict:
     ts        = ts or datetime.now()
     device_id = random.choice(DEVICE_IDS)
-    label     = markov_next_label(device_id)          # [1] Markov Chain
-    lf        = diurnal_load_factor(ts)                # [4] Pola harian
+    label     = markov_next_label(device_id)
+    lf        = diurnal_load_factor(ts)
 
-    # ── Target "raw" berdasarkan label ────────────────────────────────────────
     if label == 0:   # NORMAL
         t_voltage   = np.random.uniform(215, 225) * (0.85 + 0.15 * lf)
         t_current   = np.random.uniform(3, 8)     * (0.6  + 0.4  * lf)
@@ -343,7 +339,7 @@ def generate_row(ts: datetime | None = None) -> dict:
     # ── [3] Device Bias ───────────────────────────────────────────────────────
     voltage, current, temperature = apply_device_bias(device_id, voltage, current, temperature)
 
-    # ── Power (konsisten V × I × pf) ─────────────────────────────────────────
+    # ── Power ─────────────────────────────────────────────────────────────────
     power = _power(voltage, current)
 
     return {
@@ -361,7 +357,7 @@ def generate_row(ts: datetime | None = None) -> dict:
         "checksum_valid":      int(chk_valid),
         "authentication_fail": int(auth_fail),
         "label":               label,
-        "label_name":          label,
+        "label_name":          LABEL_MAP[label],
     }
 
 
@@ -390,14 +386,10 @@ def append_csv(rows: list[dict]):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# BACKGROUND SIMULATOR — Burst 10 row/detik
+# BACKGROUND SIMULATOR
 # ══════════════════════════════════════════════════════════════════════════════
 
 def run_simulator(rate: int):
-    """
-    Generate `rate` row setiap detik (burst per tick).
-    Setiap row di-broadcast ke semua SSE client secara individual.
-    """
     global TOTAL_ROWS
     interval = 1.0 / rate
     print(f"⚙️  Simulator started — {rate} row/detik (interval {interval*1000:.0f} ms)")
@@ -435,18 +427,19 @@ def index():
     with LOCK:
         n = TOTAL_ROWS
     return jsonify({
-        "service":    "Smart Grid IoT Simulator v2 (Multi-Method)",
+        "service":    "Smart Grid IoT Simulator v2 (Multi-Method + Ngrok)",
         "methods":    ["Markov Chain", "AR(1) Temporal Dependency", "Diurnal Pattern", "Device Bias"],
         "total_rows": n,
         "csv_file":   CSV_FILE,
+        "public_url": NGROK_PUBLIC_URL or "ngrok not active",
         "endpoints": {
-            "GET /data/latest":        "Row terbaru",
-            "GET /data/history":       "N row terakhir (?limit=50)",
-            "GET /data/realtime":      "SSE stream real-time ★",
-            "GET /data/download":      "Download CSV",
-            "GET /data/stats":         "Statistik distribusi label",
-            "GET /status":             "Status simulator",
-            "GET /markov/state":       "Lihat Markov state semua device",
+            "GET /data/latest":   "Row terbaru",
+            "GET /data/history":  "N row terakhir (?limit=50)",
+            "GET /data/realtime": "SSE stream real-time ★",
+            "GET /data/download": "Download CSV",
+            "GET /data/stats":    "Statistik distribusi label",
+            "GET /status":        "Status simulator",
+            "GET /markov/state":  "Lihat Markov state semua device",
         }
     })
 
@@ -467,6 +460,7 @@ def status():
         "csv_size_kb":         round(csv_size / 1024, 2),
         "sse_clients":         len(SSE_QUEUES),
         "label_dist_last1000": dist,
+        "public_url":          NGROK_PUBLIC_URL or "ngrok not active",
     })
 
 
@@ -521,7 +515,6 @@ def download():
 
 @app.route("/markov/state")
 def markov_state():
-    """Debug endpoint: lihat Markov state semua device saat ini."""
     return jsonify({
         d: LABEL_MAP[s] for d, s in DEVICE_LABEL_STATE.items()
     })
@@ -532,8 +525,6 @@ def markov_state():
 def realtime():
     """
     Server-Sent Events.
-    Setiap event = 1 JSON row baru (bukan array).
-
     Akses:
       curl   : curl -N http://localhost:8080/data/realtime
       JS     : const es = new EventSource('.../data/realtime')
@@ -568,29 +559,103 @@ def realtime():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# [5] NGROK INTEGRATION
+# ══════════════════════════════════════════════════════════════════════════════
+
+def start_ngrok(port: int, auth_token: str | None = None) -> str | None:
+    """
+    Mulai tunnel ngrok dan kembalikan public URL.
+    Mengembalikan None jika pyngrok tidak terinstall atau gagal.
+    """
+    global NGROK_PUBLIC_URL
+
+    try:
+        from pyngrok import ngrok, conf
+    except ImportError:
+        print("⚠️  pyngrok tidak terinstall. Jalankan: pip install pyngrok")
+        print("   Server tetap berjalan secara lokal.")
+        return None
+
+    try:
+        # Set auth token jika diberikan via argumen
+        # Jika tidak, pyngrok akan memakai token dari ~/.ngrok2/ngrok.yml
+        if auth_token:
+            ngrok.set_auth_token(auth_token)
+
+        # Buka tunnel HTTP
+        tunnel = ngrok.connect(port, "http")
+        public_url = tunnel.public_url
+
+        # Ganti http → https jika perlu
+        if public_url.startswith("http://"):
+            public_url = public_url.replace("http://", "https://", 1)
+
+        NGROK_PUBLIC_URL = public_url
+
+        print("\n" + "═" * 60)
+        print(f"  🌐 NGROK PUBLIC URL : {public_url}")
+        print("═" * 60)
+        print(f"""
+Public Endpoints (bisa diakses dari internet):
+  {public_url}/               ← info & metode
+  {public_url}/status         ← status & stats
+  {public_url}/data/latest    ← row terbaru
+  {public_url}/data/history   ← 100 row terakhir
+  {public_url}/data/realtime  ← SSE stream ★
+  {public_url}/data/download  ← download CSV
+  {public_url}/markov/state   ← debug Markov state
+        """)
+
+        return public_url
+
+    except Exception as e:
+        print(f"⚠️  Gagal memulai ngrok: {e}")
+        print("   Server tetap berjalan secara lokal.")
+        return None
+
+
+def stop_ngrok():
+    """Hentikan semua tunnel ngrok dengan aman."""
+    try:
+        from pyngrok import ngrok
+        ngrok.kill()
+        print("🔌 Ngrok tunnel ditutup.")
+    except Exception:
+        pass
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # MAIN
 # ══════════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Smart Grid Simulator v2")
-    parser.add_argument("--port", type=int, default=8080)
-    parser.add_argument("--rate", type=int, default=10,
+    parser = argparse.ArgumentParser(description="Smart Grid Simulator v2 + Ngrok")
+    parser.add_argument("--port",        type=int,  default=8080,
+                        help="Port lokal Flask (default: 8080)")
+    parser.add_argument("--rate",        type=int,  default=10,
                         help="Jumlah row per detik (default: 10)")
+    parser.add_argument("--ngrok-token", type=str,  default=None,
+                        help="Ngrok auth token (opsional jika sudah login ngrok)")
+    parser.add_argument("--no-ngrok",    action="store_true",
+                        help="Matikan ngrok, jalankan lokal saja")
     args = parser.parse_args()
 
+    # ── Inisialisasi CSV ───────────────────────────────────────────────────────
     init_csv()
 
+    # ── Mulai background simulator ─────────────────────────────────────────────
     t = threading.Thread(target=run_simulator, args=(args.rate,), daemon=True)
     t.start()
 
-    print(f"\n📡 Running at http://localhost:{args.port}")
+    # ── Info lokal ─────────────────────────────────────────────────────────────
+    print(f"\n📡 Local URL : http://localhost:{args.port}")
     print("═" * 60)
     print(f"  CSV file : {os.path.abspath(CSV_FILE)}")
     print(f"  Rate     : {args.rate} row/detik")
-    print(f"  Methods  : Markov Chain + AR(1) Temporal + Diurnal + Device Bias")
+    print(f"  Methods  : Markov Chain + AR(1) Temporal + Diurnal + Device Bias + Ngrok")
     print("═" * 60)
     print(f"""
-Endpoints:
+Local Endpoints:
   http://localhost:{args.port}/               ← info & metode
   http://localhost:{args.port}/status         ← status & stats
   http://localhost:{args.port}/data/latest    ← row terbaru
@@ -602,8 +667,23 @@ Endpoints:
 Tekan Ctrl+C untuk berhenti.
 """)
 
+    # ── Mulai ngrok (kecuali --no-ngrok) ──────────────────────────────────────
+    if not args.no_ngrok:
+        start_ngrok(args.port, auth_token=args.ngrok_token)
+    else:
+        print("ℹ️  Ngrok dinonaktifkan (--no-ngrok). Berjalan lokal saja.\n")
+
+    # ── Jalankan Flask ─────────────────────────────────────────────────────────
     try:
-        app.run(host="0.0.0.0", port=args.port, debug=False,
-                threaded=True, use_reloader=False)
+        app.run(
+            host="0.0.0.0",
+            port=args.port,
+            debug=False,
+            threaded=True,
+            use_reloader=False,
+        )
     except KeyboardInterrupt:
-        print("\n🛑 Stopped.")
+        print("\n🛑 Berhenti...")
+    finally:
+        stop_ngrok()
+        print("✅ Server ditutup.")
