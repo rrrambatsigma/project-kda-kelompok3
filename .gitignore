@@ -48,7 +48,7 @@ coverage.xml
 
 # Jupyter Notebook
 .ipynb_checkpoints
-*.ipynb
+# *.ipynb  # Commented out - keep notebooks for documentation
 
 # pyenv
 .python-version
@@ -82,7 +82,6 @@ hasil/test_predictions.csv
 autogenerate/smart_grid_data_v2.csv
 
 # Keep folder structure but ignore contents
-hasil/models/.gitkeep
 !hasil/models/.gitkeep
 
 # ============================================
