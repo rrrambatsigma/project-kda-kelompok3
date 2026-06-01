@@ -1,0 +1,176 @@
+# ============================================
+# Python
+# ============================================
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# pyenv
+.python-version
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# ============================================
+# Machine Learning / Data Science
+# ============================================
+# Model files (trained models)
+hasil/models/*.pkl
+hasil/models/*.h5
+hasil/models/*.pt
+hasil/models/*.pth
+hasil/models/*.onnx
+
+# Large CSV files (hasil/output)
+hasil/hasil_prediksi_drift.csv
+hasil/iteration_metrics.csv
+hasil/model_summary.csv
+hasil/test_predictions.csv
+
+# Generated data
+autogenerate/smart_grid_data_v2.csv
+
+# Keep folder structure but ignore contents
+hasil/models/.gitkeep
+!hasil/models/.gitkeep
+
+# ============================================
+# Encryption Keys (PENTING!)
+# ============================================
+# RSA keys - JANGAN COMMIT KE GIT!
+autogenerate/.keys/
+*.pem
+*.key
+private_key.*
+public_key.*
+
+# ============================================
+# IDE / Editor
+# ============================================
+# VSCode
+.vscode/
+*.code-workspace
+
+# PyCharm
+.idea/
+*.iml
+*.iws
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+
+# ============================================
+# OS
+# ============================================
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux
+*~
+
+# ============================================
+# Project Specific
+# ============================================
+# Backup files
+*_backup.py
+*.bak
+*.backup
+
+# Temporary files
+*.tmp
+*.temp
+
+# Logs
+*.log
+logs/
+
+# Streamlit cache
+.streamlit/
+
+# ============================================
+# Data Files (Optional - Uncomment jika tidak ingin commit data)
+# ============================================
+# Uncomment baris di bawah jika tidak ingin commit data CSV
+# data/*.csv
+# !data/.gitkeep
+
+# ============================================
+# Documentation (Keep these)
+# ============================================
+# Jangan ignore file dokumentasi
+!README.md
+!TUTORIAL.md
+!CARA_RUNNING.md
+!requirements.txt
+
+# ============================================
+# Batch Scripts (Optional)
+# ============================================
+# Uncomment jika tidak ingin commit batch files
+# *.bat

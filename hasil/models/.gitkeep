@@ -1,0 +1,2 @@
+# File ini memastikan folder models/ tetap ada di git
+# Folder ini akan berisi model trained (.pkl files)
