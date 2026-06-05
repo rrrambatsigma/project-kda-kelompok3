@@ -47,7 +47,7 @@ LABEL_NAMES = ["Normal", "Attack", "Fault"]
 N_ITERATIONS = 5
 
 # STREAMING & DRIFT MONITORING CONSTANTS
-STREAM_URL = "http://localhost:8001/data/realtime"
+STREAM_URL = "https://sharpness-earthworm-neurology.ngrok-free.dev/data/realtime"
 
 # [RAMBAT] Endpoint tujuan kirim encrypted packet ke backend
 # Ganti URL ini sesuai endpoint yang Rambat buat di server.py
