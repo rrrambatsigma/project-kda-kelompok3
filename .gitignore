@@ -1,0 +1,104 @@
+# ===== PYTHON =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ===== VIRTUAL ENVIRONMENT =====
+venv/
+ENV/
+env/
+.venv
+.env
+.env.local
+.env.*.local
+
+# ===== IDE =====
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+.project
+.pydevproject
+.settings/
+
+# ===== JUPYTER NOTEBOOK =====
+.ipynb_checkpoints
+*.ipynb
+
+# ===== TESTING =====
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# ===== PROJECT SPECIFIC =====
+# RSA Keys (sensitive!)
+hasil/keys/*.pem
+hasil/keys/private_key.pem
+hasil/keys/public_key.pem
+
+# Model output files (large, can be regenerated)
+hasil/models/*.pkl
+hasil/models/trained_*.pkl
+
+# Prediction logs (temporary)
+hasil/hasil_prediksi_drift.csv
+hasil/test_predictions.csv
+hasil/model_summary.csv
+hasil/iteration_metrics.csv
+
+# Data files (optional - uncomment if using external data)
+# data/*.csv
+
+# ===== OS SPECIFIC =====
+Thumbs.db
+.Thumbs.db
+.DS_Store
+
+# ===== LOGS =====
+*.log
+logs/
+log/
+
+# ===== CACHE & TEMP =====
+.cache/
+*.cache
+temp/
+tmp/
+
+# ===== NODE MODULES (if using streamlit/web dependencies) =====
+node_modules/
+package-lock.json
+yarn.lock
+
+# ===== MISC =====
+.env.backup
+*.backup
+*.bak
+.DS_Store
+.AppleDouble
+.LSOverride
