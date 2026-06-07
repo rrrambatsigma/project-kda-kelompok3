@@ -28,9 +28,12 @@ venv/
 ENV/
 env/
 .venv
+
+# ===== ENVIRONMENT CONFIG (secrets!) =====
 .env
 .env.local
 .env.*.local
+!.env.example
 
 # ===== IDE =====
 .vscode/
