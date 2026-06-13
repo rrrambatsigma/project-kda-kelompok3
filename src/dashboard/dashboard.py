@@ -36,15 +36,18 @@ Y_LABELS    = {"voltage": "Tegangan (V)", "current": "Arus (A)", "temperature": 
 _packet_queue: queue.Queue = queue.Queue(maxsize=200)
 _sse_thread: threading.Thread = None
 _sse_running: bool = False
+_sse_connected: bool = False  # True saat koneksi SSE berhasil
+
 
 def _sse_listener():
     """Background thread: listen SSE terus-menerus, masukkan packet ke queue."""
     import requests
-    global _sse_running
+    global _sse_running, _sse_connected
     while _sse_running:
         try:
             print(f"[SSE] Connecting to {SSE_URL}...")
-            r = requests.get(SSE_URL, stream=True, timeout=60)
+            r = requests.get(SSE_URL, stream=True, timeout=10)
+            _sse_connected = True
             print(f"[SSE] Connected!")
             for line in r.iter_lines():
                 if not _sse_running:
@@ -83,6 +86,7 @@ def _sse_listener():
                         except Exception as e:
                             print(f"[SSE] Decrypt error: {e}")
         except Exception as e:
+            _sse_connected = False
             print(f"[SSE] Connection error: {e}")
             if _sse_running:
                 time.sleep(3)  # retry 3 detik
@@ -94,6 +98,10 @@ def start_sse_listener():
         _sse_thread = threading.Thread(target=_sse_listener, daemon=True)
         _sse_thread.start()
 
+def is_sse_connected() -> bool:
+    """Return True jika SSE thread hidup DAN sudah pernah konek berhasil."""
+    return _sse_connected and _sse_thread is not None and _sse_thread.is_alive()
+
 def drain_queue():
     packets = []
     while True:
@@ -103,6 +111,8 @@ def drain_queue():
             break
     print(f"[QUEUE] drained={len(packets)}")
     return packets
+
+
 
 # ─────────────────────────────────────────────
 # SIMULASI DATA
@@ -133,7 +143,7 @@ def generate_dummy_raw(label):
         "duplicate_packet": random.randint(0, 5), "checksum_valid": random.randint(0, 1),
         "authentication_fail": auth_fail,
         "voting_prediction": label, "label_name": LABEL_MAP[label],
-    }
+    }++++++++
 
 def get_next_simulated_packet():
     label = random.choices([0, 1, 2], weights=[70, 20, 10])[0]
@@ -200,11 +210,11 @@ def init_state():
             st.session_state.keys_ready = False
 
     if "initialized" not in st.session_state:
-        history, counts = generate_initial_dummy(40)
-        st.session_state.history     = history
-        st.session_state.counts      = counts
-        st.session_state.total       = len(history)
-        st.session_state.running     = False
+        # Mulai dengan 0 data dummy — data akan masuk realtime
+        st.session_state.history     = []
+        st.session_state.counts      = {"NORMAL": 0, "ATTACK": 0, "FAULT": 0}
+        st.session_state.total       = 0
+        st.session_state.running     = True   # auto-start langsung
         st.session_state.tab         = "voltage"
         st.session_state.initialized = True
 
@@ -506,11 +516,19 @@ def render_all(placeholders):
 def process_incoming_packets():
     """
     Ambil semua packet dari queue, update session_state.
-    Return True jika ada packet baru (perlu trigger rerun).
-    Dipanggil hanya saat running=True, di dalam main().
+    - LIVE_MODE + SSE terhubung → ambil dari queue
+    - LIVE_MODE + SSE down      → fallback simulasi (agar data tetap mengalir)
+    - Bukan LIVE_MODE           → selalu simulasi
+    Return True jika ada packet baru.
     """
     if LIVE_MODE:
         new_packets = drain_queue()
+        # Fallback ke simulasi saat SSE belum/tidak terhubung
+        if not new_packets and not is_sse_connected():
+            p = get_next_simulated_packet()
+            new_packets = [p] if p else []
+            if new_packets:
+                print("[FALLBACK] SSE down — pakai data simulasi")
     else:
         p = get_next_simulated_packet()
         new_packets = [p] if p else []
@@ -550,11 +568,12 @@ def main():
         st.markdown("### ⚙️ Kontrol")
         st.markdown(f"**Mode:** `{'LIVE' if LIVE_MODE else 'SIMULASI'}`")
         if LIVE_MODE:
-            sse_ok = _sse_thread is not None and _sse_thread.is_alive()
-            if sse_ok:
-                st.success("🟢 SSE terhubung")
+            if is_sse_connected():
+                st.success("🟢 SSE terhubung (LIVE)")
+            elif _sse_thread is not None and _sse_thread.is_alive():
+                st.warning("🟡 SSE mencoba konek... (Simulasi aktif)")
             else:
-                st.warning("🔴 SSE belum terhubung")
+                st.error("🔴 SSE thread mati")
         st.markdown("---")
         speed = st.slider("Interval refresh (detik)", 0.5, 5.0, 1.0, 0.5)
         st.markdown("---")

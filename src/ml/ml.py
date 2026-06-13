@@ -54,7 +54,7 @@ LABEL_NAMES = ["Normal", "Attack", "Fault"]
 N_ITERATIONS = 5
 
 # STREAMING & DRIFT MONITORING CONSTANTS
-STREAM_URL = os.environ.get("STREAM_URL", "http://localhost:8080/data/realtime")
+STREAM_URL = os.environ.get("STREAM_URL", "http://localhost:5055/data/realtime")
 
 # [RAMBAT] Endpoint tujuan kirim encrypted packet ke backend
 PREDICTION_POST_URL = "http://localhost:8001/prediction/receive"
@@ -62,7 +62,7 @@ PREDICTION_POST_URL = "http://localhost:8001/prediction/receive"
 STREAM_BUFFER_SIZE = 500
 TRAINING_BUFFER_SIZE = 200
 DRIFT_LOG_FILE = os.path.join(OUTPUT_DIR, "predictions", "hasil_prediksi_drift.csv")
-MODEL_DIR = os.path.join(OUTPUT_DIR, "models")
+MODEL_DIR = os.path.join(OUTPUT_DIR, "models")  
 os.makedirs(MODEL_DIR, exist_ok=True)
 os.makedirs(os.path.join(OUTPUT_DIR, "predictions"), exist_ok=True)
 
