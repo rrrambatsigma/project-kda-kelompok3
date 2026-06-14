@@ -59,16 +59,19 @@ htmlcov/
 .tox/
 
 # ===== PROJECT SPECIFIC =====
-# RSA Keys (sensitive!)
+# RSA Keys (sensitive!) - JANGAN DI-PUSH
 hasil/keys/*.pem
 hasil/keys/private_key.pem
 hasil/keys/public_key.pem
 
-# Model output files (large, can be regenerated)
+# Model files (large files, bisa di-retrain)
 hasil/models/*.pkl
 hasil/models/trained_*.pkl
 
-# Prediction logs (temporary)
+# Generated data & predictions (temporary, jangan di-push)
+data/raw/smart_grid_data_v2.csv
+hasil/predictions/*.csv
+hasil/metrics/*.csv
 hasil/hasil_prediksi_drift.csv
 hasil/test_predictions.csv
 hasil/model_summary.csv
