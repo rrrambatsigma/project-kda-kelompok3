@@ -11,6 +11,10 @@ import requests
 from collections import deque
 from datetime import datetime
 from copy import deepcopy
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 warnings.filterwarnings('ignore')
 
