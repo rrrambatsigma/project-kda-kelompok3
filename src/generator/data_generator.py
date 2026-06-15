@@ -66,6 +66,7 @@ PUBLIC_FIELDS = [
     "voltage", "current", "power", "frequency", "temperature",
     "latency", "packet_loss", "throughput",
     "duplicate_packet", "checksum_valid", "authentication_fail",
+    "label",
 ]
 LABEL_MAP  = {0: "NORMAL", 1: "ATTACK", 2: "FAULT"}
 
@@ -412,14 +413,14 @@ def run_simulator(rate: int):
         with LOCK:
             HISTORY.append(row)
             TOTAL_ROWS += 1
-            dead = []
+            alive = []
             for q in SSE_QUEUES:
                 try:
                     q.put_nowait(to_public(row))
+                    alive.append(q)
                 except queue.Full:
-                    dead.append(q)
-            for q in dead:
-                SSE_QUEUES.remove(q)
+                    pass
+            SSE_QUEUES[:] = alive
 
         time.sleep(interval)
 
@@ -640,15 +641,18 @@ def stop_ngrok():
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-    description="Smart Grid Simulator v2 + Ngrok"
-)
+        description="Smart Grid Simulator v2 + Ngrok"
+    )
+    parser.add_argument("--port", type=int, default=GENERATOR_PORT,
+                        help="Port untuk Flask server")
+    parser.add_argument("--rate", type=int, default=GENERATOR_RATE,
+                        help="Jumlah baris data per detik")
+    parser.add_argument("--ngrok-token", type=str, default=NGROK_TOKEN,
+                        help="Auth token ngrok (opsional)")
+    parser.add_argument("--no-ngrok", action="store_true", default=not NGROK_ENABLED,
+                        help="Nonaktifkan tunnel ngrok")
 
     args = parser.parse_args()
-
-    args.port = GENERATOR_PORT
-    args.rate = GENERATOR_RATE
-    args.ngrok_token = NGROK_TOKEN
-    args.no_ngrok = not NGROK_ENABLED
 
     # ── Inisialisasi CSV ───────────────────────────────────────────────────────
     print("\n[ENV CONFIG]")
