@@ -121,16 +121,24 @@ def load_rsa_keys() -> tuple[RSAPrivateKey, RSAPublicKey]:
     return private_key, public_key
 
 
+_pub_key_cache: RSAPublicKey | None = None
+_priv_key_cache: RSAPrivateKey | None = None
+
+
 def get_public_key() -> RSAPublicKey:
-    """Shortcut: load hanya public key (untuk sender)."""
-    _, public_key = load_rsa_keys()
-    return public_key
+    """Shortcut: load hanya public key (untuk sender) — cached."""
+    global _pub_key_cache
+    if _pub_key_cache is None:
+        _, _pub_key_cache = load_rsa_keys()
+    return _pub_key_cache
 
 
 def get_private_key() -> RSAPrivateKey:
-    """Shortcut: load hanya private key (untuk receiver)."""
-    private_key, _ = load_rsa_keys()
-    return private_key
+    """Shortcut: load hanya private key (untuk receiver) — cached."""
+    global _priv_key_cache
+    if _priv_key_cache is None:
+        _priv_key_cache, _ = load_rsa_keys()
+    return _priv_key_cache
 
 
 # ─────────────────────────────────────────────

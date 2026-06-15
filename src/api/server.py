@@ -52,6 +52,7 @@ _new_packet_condition: asyncio.Condition | None = None
 # FIX Bug #1: Tracking berbasis seq, bukan index list
 # Menyimpan seq tertinggi yang sudah ada di buffer saat ini
 _highest_seq_in_buffer: int = 0
+_seq_lock: asyncio.Lock | None = None
 
 # Flag shutdown — di-set saat server menerima sinyal berhenti
 # SSE generator mengecek flag ini agar bisa exit dengan bersih
@@ -89,9 +90,10 @@ async def on_startup():
     asyncio.Condition() harus dibuat di dalam event loop yang aktif.
     Membuat di global scope (saat import) bisa pakai event loop yang salah.
     """
-    global _new_packet_condition, _server_shutting_down
+    global _new_packet_condition, _server_shutting_down, _seq_lock
     _new_packet_condition  = asyncio.Condition()
     _server_shutting_down  = False
+    _seq_lock              = asyncio.Lock()
     logger.info("Server started. Condition variable initialized.")
 
 
@@ -122,6 +124,7 @@ class SecurePacket(BaseModel):
     encrypted_payload: str
     encrypted_aes_key: str
     nonce: str
+    model_config = {"extra": "allow"}
 
 
 def validate_packet(data: dict) -> None:
@@ -160,7 +163,8 @@ async def receive_prediction(packet: SecurePacket) -> JSONResponse:
     }
 
     PACKET_BUFFER.append(enriched)
-    _highest_seq_in_buffer = seq
+    async with _seq_lock:
+        _highest_seq_in_buffer = seq
 
     logger.info(
         "Packet diterima seq=%s | buffer=%s",
@@ -205,7 +209,8 @@ async def sse_packet_generator(request: Request) -> AsyncGenerator[str, None]:
 
     # Client baru hanya terima packet yang datang SETELAH connect
     # (bukan replay seluruh buffer historis)
-    last_sent_seq: int = _highest_seq_in_buffer
+    async with _seq_lock:
+        last_sent_seq: int = _highest_seq_in_buffer
 
     logger.info("SSE client terhubung. Mulai dari seq > %s", last_sent_seq)
 
@@ -238,7 +243,7 @@ async def sse_packet_generator(request: Request) -> AsyncGenerator[str, None]:
                     try:
                         await asyncio.wait_for(
                             _new_packet_condition.wait(),
-                            timeout=15.0,
+                            timeout=5.0,
                         )
                     except asyncio.TimeoutError:
                         # Timeout normal → kirim ping, lanjut loop

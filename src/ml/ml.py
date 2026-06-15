@@ -513,15 +513,18 @@ class DriftMonitoringSystem:
             }
 
             # Enkripsi payload → encrypted_packet (dict dengan 3 key: base64)
+            t0 = time.time()
             encrypted_packet = build_packet(payload)
+            enc_time_ms = round((time.time() - t0) * 1000, 2)
+
+            # [PERF] Kirim encryption_time_ms sebagai extra field
+            post_data = {"encryption_time_ms": enc_time_ms, **encrypted_packet}
 
             # [RAMBAT] Kirim encrypted_packet ke endpoint POST server Rambat
-            # Rambat perlu membuat endpoint: POST /prediction/receive
-            # yang menerima JSON body berisi encrypted_packet ini
             try:
                 response = requests.post(
                     PREDICTION_POST_URL,
-                    json=encrypted_packet,
+                    json=post_data,
                     timeout=5
                 )
                 if response.status_code == 200:
@@ -529,8 +532,7 @@ class DriftMonitoringSystem:
                 else:
                     print(f"[⚠️  ENCRYPT] POST gagal: HTTP {response.status_code}")
             except requests.exceptions.ConnectionError:
-                # Server Rambat belum jalan — simpan di buffer saja, tidak crash
-                pass
+                print(f"[⚠️  ENCRYPT] POST ConnectionError — server mungkin tidak aktif")
             except requests.exceptions.Timeout:
                 print(f"[⚠️  ENCRYPT] POST timeout, data tetap di buffer")
 
@@ -559,11 +561,8 @@ class DriftMonitoringSystem:
             # Prediksi
             base_pred, adaptive_pred = self.predict_both_models(X_scaled)
 
-            # Ground truth (untuk evaluasi offline)
-            ground_truth = self.get_ground_truth_label(
-                raw_data['timestamp'],
-                raw_data['device_id']
-            )
+            # Ground truth (label asli dari generator — tidak di-strip lagi)
+            ground_truth = raw_data.get('label')
 
             # Log prediksi ke CSV
             self.log_prediction(raw_data, base_pred, adaptive_pred, ground_truth)
@@ -572,7 +571,7 @@ class DriftMonitoringSystem:
             self.total_predictions += 1
 
             # ── [VIO] Enkripsi & kirim ──────────────────────────
-            encrypted_packet = self._build_and_send_packet(raw_data, adaptive_pred)
+            encrypted_packet = self._build_and_send_packet(raw_data, base_pred)
             # ────────────────────────────────────────────────────
 
             # Simpan ke stream buffer
@@ -816,14 +815,20 @@ def main_training():
     print(pred_df[cols_preview].head(5).to_string(index=False))
 
     print("\n[4] Saving trained models...")
-    X_train_full, y_train_full, _, _, _ = load_data()
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train_full)
+    # [FIX] Baca CSV mentah langsung, jangan lewat load_data() yang sudah nge-scale
+    train_df = pd.read_csv(os.path.join(DATA_DIR, "df_train.csv"))
+    X_raw = train_df.drop(columns=['timestamp', 'device_id', 'label'], errors='ignore')
+    y_raw = train_df['label']
 
+    # [FIX] Fit scaler SEKALI di data mentah
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_raw)
+
+    # [FIX] Train model dengan scaler yang benar
     final_models = {}
     for model_name in get_models().keys():
         model = get_models(seed=42)[model_name]
-        model.fit(X_train_scaled, y_train_full)
+        model.fit(X_train_scaled, y_raw)
         final_models[model_name] = model
 
     save_models(final_models, scaler, prefix="trained")

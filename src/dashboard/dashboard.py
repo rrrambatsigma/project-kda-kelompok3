@@ -45,7 +45,7 @@ LABEL_STR_VALID = {"NORMAL", "ATTACK", "FAULT"}  # uppercase canonical
 LABEL_COLOR = {"NORMAL": "#4caf84", "ATTACK": "#ef5350", "FAULT": "#ffa726"}
 LABEL_BG    = {"NORMAL": "#1a3a2a", "ATTACK": "#3a1a1a", "FAULT": "#3a2a1a"}
 LABEL_ICON  = {"NORMAL": "✅", "ATTACK": "🚨", "FAULT": "⚠️"}
-DEVICES     = [f"SGD-{str(i).zfill(4)}" for i in range(1, 11)]
+DEVICES     = [f"SGD-{str(i).zfill(4)}" for i in range(1, 51)]
 MAX_HISTORY = 100
 LINE_COLORS = {"voltage": "#7eceff", "current": "#ef5350", "temperature": "#ffa726", "latency": "#ce93d8"}
 Y_LABELS    = {"voltage": "Tegangan (V)", "current": "Arus (A)", "temperature": "Suhu (°C)", "latency": "Latency (ms)"}
@@ -103,7 +103,7 @@ def _sse_listener():
     while _sse_running:
         try:
             print(f"[SSE] Connecting to {SSE_URL}...")
-            r = requests.get(SSE_URL, stream=True, timeout=10)
+            r = requests.get(SSE_URL, stream=True, timeout=20)
             _sse_connected = True
             print(f"[SSE] Connected!")
             for line in r.iter_lines():
@@ -121,7 +121,14 @@ def _sse_listener():
                         "encrypted_aes_key": raw_packet["encrypted_aes_key"],
                         "nonce":             raw_packet["nonce"],
                     }
+
+                    # [PERF] Baca encryption_time_ms dari ML.py + ukur decryption time
+                    enc_time_ms = raw_packet.get("encryption_time_ms", 0)
+                    t0 = time.time()
                     payload = unpack_packet(packet)
+                    dec_time_ms = round((time.time() - t0) * 1000, 2)
+                    payload["_enc_time_ms"] = enc_time_ms
+                    payload["_dec_time_ms"] = dec_time_ms
 
                     # [FIX] normalize_label() sekarang case-insensitive
                     # "Normal" dari ML.py → .upper() → "NORMAL" → match LABEL_STR_VALID
@@ -143,14 +150,22 @@ def _sse_listener():
 
                     # Pastikan field wajib ada
                     for field in ["voltage", "current", "temperature", "latency",
-                                  "packet_loss", "authentication_fail", "device_id", "timestamp"]:
+                                  "packet_loss", "authentication_fail"]:
                         if field not in payload:
                             payload[field] = 0
+                    if "device_id" not in payload:
+                        payload["device_id"] = "unknown"
+                    if "timestamp" not in payload:
+                        payload["timestamp"] = ""
 
                     try:
                         _packet_queue.put_nowait(payload)
                     except queue.Full:
-                        pass
+                        if not hasattr(st.session_state, "_drop_counter"):
+                            st.session_state._drop_counter = 0
+                        st.session_state._drop_counter += 1
+                        if st.session_state._drop_counter % 100 == 1:
+                            print(f"[⚠️  DROP] Packet queue full — {st.session_state._drop_counter} packets dropped so far")
 
                 except Exception as e:
                     print(f"[SSE] Decrypt/parse error: {e}")
@@ -234,6 +249,8 @@ def generate_dummy_raw(label: int) -> dict:
         "authentication_fail": auth_fail,
         "voting_prediction":   label,            # int, sumber kebenaran
         "label_name":          LABEL_MAP[label], # [FIX] sudah uppercase: "NORMAL"/"ATTACK"/"FAULT"
+        "_enc_time_ms":        round(random.uniform(0.8, 3.5), 2),
+        "_dec_time_ms":        round(random.uniform(0.4, 2.0), 2),
     }
 
 
@@ -285,6 +302,20 @@ def inject_css():
     h1, h2, h3 { color: #e6edf3 !important; }
     .stAlert { background: #1c2128 !important; border-color: #30363d !important; color: #c9d1d9 !important; }
     button[aria-label="View fullscreen"] { display: none !important; }
+
+    /* Navigation menu cards */
+    .nav-btn { margin-bottom: 0; }
+    .nav-btn button { text-align: left !important; padding: 10px 16px !important;
+                      height: auto !important; min-height: 46px !important;
+                      border-radius: 10px !important; border: 1px solid #30363d !important;
+                      font-size: 13px !important; font-weight: 600 !important;
+                      transition: all .15s; display: flex !important;
+                      align-items: center !important; gap: 8px !important; }
+    .nav-btn button[kind="primary"] { background: #0d1f3c !important;
+                                      border-color: #1f6feb !important;
+                                      border-left: 3px solid #1f6feb !important; }
+    .nav-sub { font-size: 10px; color: #8b949e; font-family: monospace;
+               margin: -2px 0 10px 4px; padding-left: 4px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -301,6 +332,7 @@ def init_state():
             st.session_state.keys_ready = False
 
     if "initialized" not in st.session_state:
+        st.session_state.page        = "dashboard"
         st.session_state.history     = []
         st.session_state.counts      = {"NORMAL": 0, "ATTACK": 0, "FAULT": 0}
         st.session_state.total       = 0
@@ -360,7 +392,7 @@ def render_donut():
     st.markdown('<div class="sg-section-title">Distribusi Status</div>', unsafe_allow_html=True)
     fig = go.Figure(go.Pie(
         labels=["NORMAL", "ATTACK", "FAULT"],
-        values=[counts.get("NORMAL", 0) or 0.001, counts.get("ATTACK", 0), counts.get("FAULT", 0)],
+        values=[counts.get("NORMAL", 0), counts.get("ATTACK", 0), counts.get("FAULT", 0)],
         hole=0.60,
         marker=dict(colors=["#4caf84", "#ef5350", "#ffa726"], line=dict(color="#161b22", width=3)),
         textinfo="percent", textfont=dict(size=12, color="#e6edf3"),
@@ -584,6 +616,64 @@ def render_enc_panel():
         st.info("🔀 Nonce 12-byte unik per packet")
 
 
+# ─────────────────────────────────────────────
+# PERFORMA ENKRIPSI CHART
+# ─────────────────────────────────────────────
+def render_enc_perf_chart():
+    history = st.session_state.history
+    if len(history) < 2:
+        return
+    df = pd.DataFrame(history[-50:])
+    if "_enc_time_ms" not in df.columns or "_dec_time_ms" not in df.columns:
+        return
+
+    st.markdown(f"""<div class="sg-section-title">Performa Hybrid Encryption</div>""", unsafe_allow_html=True)
+    c1, c2, c3 = st.columns(3)
+    avg_enc = df["_enc_time_ms"].mean()
+    avg_dec = df["_dec_time_ms"].mean()
+    avg_total = df["_enc_time_ms"].mean() + df["_dec_time_ms"].mean()
+    for col, label, val, color in [
+        (c1, "Rata-rata Enkripsi", f"{avg_enc:.2f} ms", "#7eceff"),
+        (c2, "Rata-rata Dekripsi", f"{avg_dec:.2f} ms", "#4caf84"),
+        (c3, "Total per Packet",   f"{avg_total:.2f} ms", "#ce93d8"),
+    ]:
+        col.markdown(f"""
+        <div class="metric-card" style="height:auto;padding:12px 16px">
+          <div class="metric-label">{label}</div>
+          <div class="metric-value" style="font-size:24px;color:{color}">{val}</div>
+        </div>""", unsafe_allow_html=True)
+
+    x = list(range(len(df)))
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=x, y=df["_enc_time_ms"].tolist(), mode="lines+markers",
+        name="Encrypt", line=dict(color="#7eceff", width=2),
+        marker=dict(size=4, color="#7eceff"),
+        hovertemplate="Encrypt: %{y:.2f}ms<extra></extra>",
+    ))
+    fig.add_trace(go.Scatter(
+        x=x, y=df["_dec_time_ms"].tolist(), mode="lines+markers",
+        name="Decrypt", line=dict(color="#4caf84", width=2),
+        marker=dict(size=4, color="#4caf84"),
+        hovertemplate="Decrypt: %{y:.2f}ms<extra></extra>",
+    ))
+    xtick_step = max(1, len(x) // 8)
+    fig.update_layout(
+        margin=dict(t=8, b=4, l=8, r=8), height=180,
+        legend=dict(orientation="h", y=1.08, font=dict(size=10, color="#c9d1d9")),
+        xaxis=dict(showgrid=True, gridcolor="#21262d", tickfont=dict(size=9, color="#8b949e"),
+                   linecolor="#30363d", tickvals=x[::xtick_step],
+                   ticktext=[str(i) for i in range(0, len(x), xtick_step)]),
+        yaxis=dict(title=dict(text="Waktu (ms)", font=dict(size=10, color="#8b949e")),
+                   showgrid=True, gridcolor="#21262d", tickfont=dict(size=9, color="#8b949e"),
+                   linecolor="#30363d"),
+        plot_bgcolor="#0d1117", paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(family="sans-serif", size=11, color="#c9d1d9"),
+        hovermode="x unified",
+    )
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+
 def render_all():
     render_header()
     render_metrics()
@@ -604,6 +694,9 @@ def render_all():
     with st.container(border=True):
         render_enc_panel()
 
+    with st.container(border=True):
+        render_enc_perf_chart()
+
 
 # ─────────────────────────────────────────────
 # KONSUMSI QUEUE & UPDATE SESSION STATE
@@ -619,6 +712,9 @@ def process_incoming_packets() -> bool:
             p = get_next_simulated_packet()
             new_packets = [p] if p else []
             if new_packets:
+                if not hasattr(st.session_state, "_fallback_warned"):
+                    st.session_state._fallback_warned = True
+                    st.warning("⚠️ Koneksi SSE terputus — menampilkan data simulasi sementara")
                 print("[FALLBACK] SSE down — pakai data simulasi")
     else:
         p = get_next_simulated_packet()
@@ -649,6 +745,103 @@ def process_incoming_packets() -> bool:
 
 
 # ─────────────────────────────────────────────
+# PAGE: TENTANG
+# ─────────────────────────────────────────────
+def render_tentang_page():
+    st.markdown("""
+    <div class="sg-header">
+      <div>
+        <div class="sg-title">⚡ Smart Grid Security Monitoring</div>
+        <div class="sg-subtitle">KEAMANAN DATA DAN APLIKASINYA · KELOMPOK 3</div>
+      </div>
+      <div style="text-align:right">
+        <div class="sg-hbadge">📄 TENTANG PROYEK</div>
+        <div style="font-family:monospace;font-size:10px;color:#7eceff;margin-top:6px">Voting Classifier · Hybrid Encryption</div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    col_desc, col_team = st.columns([1.4, 1], gap="large")
+
+    with col_desc:
+        st.markdown("""
+        <div style="background:#161b22;border:1px solid #30363d;border-radius:12px;padding:24px;height:100%">
+          <h3 style="margin-top:0;margin-bottom:16px;color:#e6edf3">📖 Tentang Proyek</h3>
+          <p style="color:#c9d1d9;font-size:13px;line-height:1.8;margin-bottom:12px">
+            Sistem monitoring keamanan <b>smart grid</b> secara <b>realtime</b> yang mendeteksi 
+            anomali jaringan listrik menggunakan ensemble <b>Voting Classifier</b> 
+            (<i>Decision Tree, Random Forest, Logistic Regression</i>) dengan metode 
+            <b>Hard Voting</b>.
+          </p>
+          <p style="color:#c9d1d9;font-size:13px;line-height:1.8;margin-bottom:12px">
+            Hasil prediksi diamankan dengan <b>hybrid encryption</b> — payload dienkripsi 
+            menggunakan <b>AES-256-GCM</b> dan AES key-nya diamankan dengan <b>RSA-2048-OAEP</b> — 
+            lalu dikirim sebagai JSON aman melalui backend FastAPI dan didekripsi di sisi 
+            dashboard menggunakan private key RSA.
+          </p>
+          <p style="color:#c9d1d9;font-size:13px;line-height:1.8">
+            Seluruh sistem dibangun dengan arsitektur <b>microservices</b>: Data Generator 
+            (Flask) → ML Pipeline (scikit-learn) → API Server (FastAPI/SSE) → Dashboard 
+            (Streamlit + Plotly).
+          </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col_team:
+        st.markdown("""
+        <div style="background:#161b22;border:1px solid #30363d;border-radius:12px;padding:24px;height:100%">
+          <h3 style="margin-top:0;margin-bottom:16px;color:#e6edf3">👥 Kelompok 3</h3>
+        """, unsafe_allow_html=True)
+
+        members = [
+            ("Muhammad Rasyid Haunan", "L0224007"),
+            ("Raihan Ade Alfattah",    "L0224009"),
+            ("Rambat Ungu Aryati",     "L0224010"),
+            ("Viola Herfina Putri",    "L0224026"),
+        ]
+        for i, (name, nim) in enumerate(members):
+            bg = "#1c2128" if i % 2 == 0 else "#161b22"
+            st.markdown(f"""
+            <div style="background:{bg};border:1px solid #30363d;border-radius:8px;
+                        padding:11px 14px;margin-bottom:6px;
+                        display:flex;align-items:center;justify-content:space-between">
+              <span style="color:#e6edf3;font-size:13px;font-weight:500">{name}</span>
+              <span style="color:#8b949e;font-family:monospace;font-size:11px">{nim}</span>
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown(f"""
+        <div style="margin-top:18px;padding:12px 14px;background:#0d1f3c;border:1px solid #1f6feb;
+                    border-radius:8px;text-align:center">
+          <a href="https://github.com/rrrambatsigma/project-kda-kelompok3"
+             style="color:#7eceff;font-size:12px;font-family:monospace;text-decoration:none"
+             target="_blank">🔗 github.com/rrrambatsigma/project-kda-kelompok3</a>
+        </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("""
+    <div style="background:#161b22;border:1px solid #30363d;border-radius:12px;padding:20px;margin-top:16px">
+      <h3 style="margin-top:0;margin-bottom:16px;color:#e6edf3">🛠 Teknologi yang Digunakan</h3>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        <span class="sg-hbadge">scikit-learn</span>
+        <span class="sg-hbadge">AES-256-GCM</span>
+        <span class="sg-hbadge">RSA-2048-OAEP</span>
+        <span class="sg-hbadge">FastAPI</span>
+        <span class="sg-hbadge">SSE</span>
+        <span class="sg-hbadge">Streamlit</span>
+        <span class="sg-hbadge">Plotly</span>
+        <span class="sg-hbadge">Pandas</span>
+        <span class="sg-hbadge">Flask</span>
+        <span class="sg-hbadge">NumPy</span>
+        <span class="sg-hbadge">Joblib</span>
+        <span class="sg-hbadge">Cryptography</span>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+# ─────────────────────────────────────────────
 # MAIN
 # ─────────────────────────────────────────────
 def main():
@@ -661,6 +854,29 @@ def main():
 
     # ── Sidebar ──────────────────────────────
     with st.sidebar:
+        # ── Navigasi ─────────────────────────────
+        st.markdown("""<div style="font-size:10px;color:#8b949e;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">📄 Halaman</div>""", unsafe_allow_html=True)
+
+        dash_active = st.session_state.page == "dashboard"
+        tentang_active = st.session_state.page == "tentang"
+
+        st.markdown('<div class="nav-btn">', unsafe_allow_html=True)
+        if st.button("⚡  Dashboard", key="nav_dash", use_container_width=True,
+                     type="primary" if dash_active else "secondary"):
+            st.session_state.page = "dashboard"
+            st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown("""<div class="nav-sub">Monitor Realtime</div>""", unsafe_allow_html=True)
+
+        st.markdown('<div class="nav-btn">', unsafe_allow_html=True)
+        if st.button("ℹ️  Tentang", key="nav_tentang", use_container_width=True,
+                     type="primary" if tentang_active else "secondary"):
+            st.session_state.page = "tentang"
+            st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown("""<div class="nav-sub">Kelompok 3 · KDA</div>""", unsafe_allow_html=True)
+
+        st.markdown("---")
         st.markdown("### ⚙️ Kontrol")
         st.markdown(f"**Mode:** `{'LIVE' if LIVE_MODE else 'SIMULASI'}`")
         if LIVE_MODE:
@@ -690,6 +906,12 @@ def main():
         else:
             st.error(f"❌ {st.session_state.get('keys_error', 'Belum ada key')}")
 
+    # ── Page Routing ──────────────────────────────
+    if st.session_state.page == "tentang":
+        render_tentang_page()
+        return
+
+    # ── Dashboard ──────────────────────────────
     if not st.session_state.get("keys_ready"):
         st.error("RSA key belum ada. Jalankan: `python src/security/encrypt.py`")
         st.stop()
