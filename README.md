@@ -1,5 +1,7 @@
 # Smart Grid Security Monitoring
 
+![Pipeline Diagram](src/asset/pipeline.png)
+
 **Kelompok 3 — Keamanan Data dan Aplikasinya**
 
 Sistem monitoring keamanan smart grid secara realtime menggunakan Voting Classifier (Machine Learning) dan Hybrid Encryption (AES-256-GCM + RSA-2048-OAEP), divisualisasikan melalui dashboard Streamlit.
