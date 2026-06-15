@@ -108,3 +108,7 @@ yarn.lock
 .DS_Store
 .AppleDouble
 .LSOverride
+
+
+data/raw/smart_grid_data_v2.csv
+hasil/predictions/hasil_prediksi_drift.csv
