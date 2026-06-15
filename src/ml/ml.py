@@ -571,7 +571,7 @@ class DriftMonitoringSystem:
             self.total_predictions += 1
 
             # ── [VIO] Enkripsi & kirim ──────────────────────────
-            encrypted_packet = self._build_and_send_packet(raw_data, base_pred)
+            encrypted_packet = self._build_and_send_packet(raw_data, adaptive_pred)
             # ────────────────────────────────────────────────────
 
             # Simpan ke stream buffer
